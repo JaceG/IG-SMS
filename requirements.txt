@@ -1,0 +1,25 @@
+# Python Practice Project Requirements
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Code quality
+black>=23.7.0
+flake8>=6.0.0
+isort>=5.12.0
+
+# Documentation
+mkdocs>=1.5.0
+
+# Add more dependencies as needed for your practice projects
+
+
+# IG DM SMS Monitor service
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+httpx>=0.27.0
+twilio>=9.0.0
+pydantic-settings>=2.4.0
+aiosqlite>=0.20.0
+playwright>=1.47.0

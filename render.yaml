@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: ig-sms
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 2
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      # The following should be set in the Render dashboard or via CLI, not committed:
+      # - key: TWILIO_ACCOUNT_SID
+      # - key: TWILIO_AUTH_TOKEN
+      # - key: TWILIO_FROM_NUMBER
+      # - key: OWNER_PHONE
+      # - key: IG_THREAD_URL
+      # - key: POLL_SECONDS
+      # - key: APP_SECRET_TOKEN
+
+
