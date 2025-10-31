@@ -3,6 +3,8 @@ services:
     name: ig-sms
     env: docker
     dockerfilePath: ./Dockerfile
+    # Note: If running out of memory, consider upgrading to 'standard' plan
+    # Starter plan has ~512MB RAM, which may be tight for Playwright/Chromium
     plan: starter
     region: oregon
     disk:

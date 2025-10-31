@@ -393,7 +393,8 @@ async def browser_screenshot(token: str = Query(None)):
     _check_token(token)
     try:
         page = await get_browser_page()
-        screenshot_bytes = await page.screenshot(full_page=False)
+        # Use smaller screenshot to save memory
+        screenshot_bytes = await page.screenshot(full_page=False, clip={"width": 800, "height": 600})
         return Response(content=screenshot_bytes, media_type="image/png")
     except Exception as e:
         logger.error(f"Screenshot error: {e}", exc_info=True)

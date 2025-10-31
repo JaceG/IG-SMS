@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import hashlib
 import os
 import random
@@ -52,8 +53,41 @@ async def _ensure_browser() -> Page:
             "--disable-dev-shm-usage",
             "--no-sandbox",
             "--disable-gpu",
+            # Memory optimization flags
+            "--disable-background-networking",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-breakpad",
+            "--disable-client-side-phishing-detection",
+            "--disable-component-extensions-with-background-pages",
+            "--disable-default-apps",
+            "--disable-extensions",
+            "--disable-features=TranslateUI",
+            "--disable-hang-monitor",
+            "--disable-ipc-flooding-protection",
+            "--disable-notifications",
+            "--disable-offer-store-unmasked-wallet-cards",
+            "--disable-popup-blocking",
+            "--disable-prompt-on-repost",
+            "--disable-renderer-backgrounding",
+            "--disable-setuid-sandbox",
+            "--disable-sync",
+            "--disable-web-resources",
+            "--enable-features=NetworkService,NetworkServiceLogging",
+            "--force-color-profile=srgb",
+            "--hide-scrollbars",
+            "--ignore-gpu-blacklist",
+            "--metrics-recording-only",
+            "--mute-audio",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--no-pings",
+            "--no-zygote",
+            "--use-mock-keychain",
+            # JavaScript memory limits (for Chromium's V8 engine)
+            "--js-flags=--max-old-space-size=256",
         ],
-        viewport={"width": 1280, "height": 900},
+        viewport={"width": 800, "height": 600},  # Smaller viewport saves memory
         user_agent=(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -111,7 +145,8 @@ async def _extract_latest_message_id_and_text(page: Page) -> Optional[tuple[str,
         return None
 
     # Scan last N elements to find a plausible message node with visible text
-    for el in reversed(elements[-30:]):
+    # Reduced from 30 to 10 to save memory
+    for el in reversed(elements[-10:]):
         try:
             txt = (await el.inner_text()).strip()
             if not txt:
@@ -148,6 +183,10 @@ async def _monitor_loop() -> None:
                 send_sms(settings.owner_phone, f"IG Monitor error: {e}")
 
             await asyncio.sleep(sleep_for)
+            
+            # Periodic garbage collection to free memory (every 10 iterations)
+            if random.randint(1, 10) == 1:
+                gc.collect()
     finally:
         # Do not close persistent context to preserve session across runs
         pass
