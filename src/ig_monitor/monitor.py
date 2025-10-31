@@ -1,6 +1,7 @@
 import asyncio
 import gc
 import hashlib
+import logging
 import os
 import random
 from datetime import datetime, timezone
@@ -46,46 +47,26 @@ async def _ensure_browser() -> Page:
     # Set HEADLESS_BROWSER=false to see the browser locally
     headless = os.getenv("HEADLESS_BROWSER", "true").lower() != "false"
     
-    _browser = await pw.chromium.launch_persistent_context(
+    try:
+        _browser = await pw.chromium.launch_persistent_context(
         user_data_dir=user_data_dir,
         headless=headless,
         args=[
             "--disable-dev-shm-usage",
             "--no-sandbox",
             "--disable-gpu",
-            # Memory optimization flags
+            # Essential memory optimization flags (tested and safe)
+            "--disable-extensions",
             "--disable-background-networking",
             "--disable-background-timer-throttling",
             "--disable-backgrounding-occluded-windows",
-            "--disable-breakpad",
-            "--disable-client-side-phishing-detection",
             "--disable-component-extensions-with-background-pages",
             "--disable-default-apps",
-            "--disable-extensions",
-            "--disable-features=TranslateUI",
-            "--disable-hang-monitor",
-            "--disable-ipc-flooding-protection",
-            "--disable-notifications",
-            "--disable-offer-store-unmasked-wallet-cards",
-            "--disable-popup-blocking",
-            "--disable-prompt-on-repost",
-            "--disable-renderer-backgrounding",
-            "--disable-setuid-sandbox",
             "--disable-sync",
-            "--disable-web-resources",
-            "--enable-features=NetworkService,NetworkServiceLogging",
-            "--force-color-profile=srgb",
-            "--hide-scrollbars",
-            "--ignore-gpu-blacklist",
-            "--metrics-recording-only",
-            "--mute-audio",
+            "--disable-notifications",
             "--no-first-run",
             "--no-default-browser-check",
-            "--no-pings",
             "--no-zygote",
-            "--use-mock-keychain",
-            # JavaScript memory limits (for Chromium's V8 engine)
-            "--js-flags=--max-old-space-size=256",
         ],
         viewport={"width": 800, "height": 600},  # Smaller viewport saves memory
         user_agent=(
@@ -93,9 +74,12 @@ async def _ensure_browser() -> Page:
             "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
         ),
     )
-
-    _page = await _browser.new_page()
-    return _page
+        _page = await _browser.new_page()
+        return _page
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to launch browser: {e}", exc_info=True)
+        raise RuntimeError(f"Browser launch failed: {e}") from e
 
 
 async def is_logged_in(page: Page) -> bool:
