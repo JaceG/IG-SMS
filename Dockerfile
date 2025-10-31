@@ -5,6 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Set PYTHONPATH so Python can find the src module
+ENV PYTHONPATH=/app/src
+
 # System deps for Playwright/Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
@@ -20,6 +23,8 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 COPY . .
 
 # Default to production uvicorn command; Render will set $PORT
-CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use shell form to allow environment variable expansion
+# PYTHONPATH is set above so 'app' can be found directly
+CMD uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}
 
 

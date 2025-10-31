@@ -20,6 +20,9 @@ class Settings(BaseSettings):
 
     # Optional app secret for admin endpoints
     app_secret_token: Optional[str] = Field(None, alias="APP_SECRET_TOKEN")
+    
+    # Enable Twilio signature validation (recommended for production, can disable for testing)
+    validate_twilio_signature: bool = Field(True, alias="VALIDATE_TWILIO_SIGNATURE")
 
     # Paths for persistent data (mounted volume on Render)
     data_dir: str = Field("/data", alias="DATA_DIR")

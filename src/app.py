@@ -27,7 +27,7 @@ async def healthz():
 
 @app.post("/twilio/sms")
 async def twilio_sms(request: Request):
-    # Optional signature validation; comment out next line if not configured
+    # Signature validation is optional (controlled by VALIDATE_TWILIO_SIGNATURE env var)
     await validate_twilio_request(request)
 
     form = await request.form()

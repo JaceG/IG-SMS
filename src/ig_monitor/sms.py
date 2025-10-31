@@ -20,6 +20,9 @@ def send_sms(to_number: str, body: str) -> None:
 
 async def validate_twilio_request(request: Request) -> None:
     # Optional: verify Twilio signature to ensure webhook authenticity
+    if not _settings.validate_twilio_signature:
+        return  # Skip validation if disabled
+    
     validator = RequestValidator(_settings.twilio_auth_token)
     signature = request.headers.get("X-Twilio-Signature")
     if not signature:
