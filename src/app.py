@@ -190,6 +190,11 @@ async def browser_interface(token: str = Query(None)):
                 const response = await fetch(`/browser/navigate?token=${token}&url=${encodeURIComponent(url)}`, {
                     method: 'POST'
                 });
+                if (!response.ok) {
+                    const text = await response.text();
+                    updateStatus(`❌ Navigation failed: ${response.status} ${text}`, true);
+                    return;
+                }
                 const data = await response.json();
                 if (data.success) {
                     updateStatus(`✅ Navigated to ${url}`);
@@ -216,13 +221,24 @@ async def browser_interface(token: str = Query(None)):
         
         async function getScreenshot() {
             const img = document.getElementById('screenshot');
+            img.onerror = function() {
+                updateStatus('❌ Failed to load screenshot. Browser may not be initialized yet.', true);
+                img.style.display = 'none';
+            };
+            img.onload = function() {
+                img.style.display = 'block';
+            };
             img.src = `/browser/screenshot?token=${token}&t=${Date.now()}`;
-            img.style.display = 'block';
         }
         
         async function checkLoginStatus() {
             try {
                 const response = await fetch(`/browser/status?token=${token}`);
+                if (!response.ok) {
+                    const text = await response.text();
+                    updateStatus(`❌ Status check failed: ${response.status} ${text}`, true);
+                    return;
+                }
                 const data = await response.json();
                 if (data.logged_in) {
                     updateStatus('✅ Logged in to Instagram! You can now use the monitor.');
@@ -236,6 +252,10 @@ async def browser_interface(token: str = Query(None)):
         
         async function handleScreenshotClick(event) {
             const img = event.target;
+            if (!img.naturalWidth || !img.naturalHeight) {
+                updateStatus('⏳ Screenshot not loaded yet, please wait...', true);
+                return;
+            }
             const rect = img.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
@@ -251,6 +271,11 @@ async def browser_interface(token: str = Query(None)):
                 const response = await fetch(`/browser/click?token=${token}&x=${actualX}&y=${actualY}`, {
                     method: 'POST'
                 });
+                if (!response.ok) {
+                    const text = await response.text();
+                    updateStatus(`❌ Click failed: ${response.status} ${text}`, true);
+                    return;
+                }
                 const data = await response.json();
                 if (data.success) {
                     updateStatus(`✅ Clicked at (${actualX}, ${actualY})`);
@@ -272,6 +297,11 @@ async def browser_interface(token: str = Query(None)):
                 const response = await fetch(`/browser/type?token=${token}&text=${encodeURIComponent(text)}`, {
                     method: 'POST'
                 });
+                if (!response.ok) {
+                    const text = await response.text();
+                    updateStatus(`❌ Type failed: ${response.status} ${text}`, true);
+                    return;
+                }
                 const data = await response.json();
                 if (data.success) {
                     updateStatus(`✅ Typed text`);
@@ -298,6 +328,11 @@ async def browser_interface(token: str = Query(None)):
                 const response = await fetch(`/browser/key?token=${token}&key=${key}`, {
                     method: 'POST'
                 });
+                if (!response.ok) {
+                    const text = await response.text();
+                    updateStatus(`❌ Key press failed: ${response.status} ${text}`, true);
+                    return;
+                }
                 const data = await response.json();
                 if (data.success) {
                     setTimeout(getScreenshot, 300);
@@ -313,6 +348,11 @@ async def browser_interface(token: str = Query(None)):
                 const response = await fetch(`/browser/thread?token=${token}`, {
                     method: 'POST'
                 });
+                if (!response.ok) {
+                    const text = await response.text();
+                    updateStatus(`❌ Thread navigation failed: ${response.status} ${text}`, true);
+                    return;
+                }
                 const data = await response.json();
                 if (data.success) {
                     updateStatus('✅ Opened DM thread');
@@ -357,7 +397,9 @@ async def browser_screenshot(token: str = Query(None)):
         return Response(content=screenshot_bytes, media_type="image/png")
     except Exception as e:
         logger.error(f"Screenshot error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return a 1x1 transparent PNG on error
+        transparent_png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
+        return Response(content=transparent_png, media_type="image/png", status_code=500)
 
 
 @app.get("/browser/status")
