@@ -1,10 +1,18 @@
 import logging
+import sys
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse, PlainTextResponse
 from ig_monitor.config import get_settings
 from ig_monitor.sms import send_sms, validate_twilio_request
 from ig_monitor.state import init_state
 from ig_monitor.monitor import start_monitor, stop_monitor, is_monitor_running
+
+# Configure logging to output to stdout (so Render captures it)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 
 logger = logging.getLogger(__name__)
 
