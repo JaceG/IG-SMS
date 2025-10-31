@@ -5,6 +5,7 @@ Instagram DM monitor that sends SMS notifications via Twilio. Monitor a specific
 ## Features
 
 - Monitor a specific Instagram DM thread via web scraping with Playwright
+- **Remote browser interface** - Log in to Instagram via web UI (accessible from anywhere)
 - Start/stop monitoring via SMS commands
 - Persistent login session (stay logged in 8-12 hours without re-authentication)
 - Deployable to Render with persistent storage
@@ -17,6 +18,30 @@ Send SMS to your configured Twilio number:
 - `START IG` - Start monitoring the configured DM thread
 - `STOP IG` - Stop monitoring (session remains logged in)
 - `STATUS IG` - Check if monitor is currently running
+
+## Remote Browser Interface
+
+Access the remote browser interface to log in to Instagram:
+
+**URL:** `https://your-render-app.onrender.com/browser?token=YOUR_SECRET_TOKEN`
+
+If you've set `APP_SECRET_TOKEN` in your environment variables, include it in the URL for security. If not set, you can access the interface without a token (less secure).
+
+### Using the Browser Interface
+
+1. Navigate to the browser interface URL
+2. Click "Open Instagram Login" to go to Instagram's login page
+3. Click on the screenshot image to interact with the page (click buttons, input fields, etc.)
+4. Use the "Type Text" field to enter your username/password
+5. Press Enter after typing to submit forms
+6. Once logged in, you can start the monitor via SMS: "START IG"
+
+The browser interface provides:
+- Real-time screenshots of the browser state
+- Click anywhere on the screenshot to interact
+- Type text into focused elements
+- Navigate to any URL
+- Quick buttons for common actions (Instagram login, home, DM thread)
 
 ## Project Structure
 
@@ -60,6 +85,7 @@ OWNER_PHONE=+1234567890
 IG_THREAD_URL=https://www.instagram.com/direct/t/THREAD_ID/
 POLL_SECONDS=90
 DATA_DIR=./data
+APP_SECRET_TOKEN=your-secret-token-here  # Optional: secure the browser interface
 ```
 
 4. Run the application:
@@ -85,10 +111,12 @@ uvicorn src.app:app --reload
 ## How It Works
 
 1. The service uses Playwright to maintain a persistent browser session with Instagram
-2. When monitoring is started, it navigates to your configured DM thread
-3. Polls the page every N seconds (configurable) to detect new messages
-4. When a new message is detected, it sends an SMS via Twilio
-5. Session is preserved on disk so you can remain logged in without constant re-authentication
+2. **Log in remotely** via the browser interface at `/browser` - you can access this from anywhere to log in
+3. The browser session is shared between the web interface and the monitor
+4. When monitoring is started, it navigates to your configured DM thread
+5. Polls the page every N seconds (configurable) to detect new messages
+6. When a new message is detected, it sends an SMS via Twilio
+7. Session is preserved on disk so you can remain logged in without constant re-authentication
 
 ## Important Notes
 

@@ -40,9 +40,14 @@ async def _ensure_browser() -> Page:
 
     user_data_dir, _ = _data_paths()
     pw = await async_playwright().start()
+    
+    # Check if we should run headless (default True for Render, False for local with visible browser)
+    # Set HEADLESS_BROWSER=false to see the browser locally
+    headless = os.getenv("HEADLESS_BROWSER", "true").lower() != "false"
+    
     _browser = await pw.chromium.launch_persistent_context(
         user_data_dir=user_data_dir,
-        headless=True,
+        headless=headless,
         args=[
             "--disable-dev-shm-usage",
             "--no-sandbox",
@@ -59,7 +64,8 @@ async def _ensure_browser() -> Page:
     return _page
 
 
-async def _is_logged_in(page: Page) -> bool:
+async def is_logged_in(page: Page) -> bool:
+    """Check if currently logged into Instagram"""
     # Heuristic: presence of the DM thread container vs login form
     if "login" in page.url.lower():
         return False
@@ -71,19 +77,23 @@ async def _is_logged_in(page: Page) -> bool:
         return False
 
 
+# Backward compatibility alias - use is_logged_in instead
+_is_logged_in = is_logged_in
+
+
 async def open_thread_and_wait_ready(page: Page) -> None:
     _, thread_url = _data_paths()
     await page.goto(thread_url, wait_until="domcontentloaded")
     # Give time for React app to render
     await page.wait_for_timeout(1500)
 
-    if not await _is_logged_in(page):
+    if not await is_logged_in(page):
         # Notify and rely on user to log in manually (first run)
         send_sms(settings.owner_phone, "IG Monitor: login required. Please log in via the hosted session.")
         # Keep page open for manual login window
         # Poll until logged in or timeout (~10 minutes)
         for _ in range(120):
-            if await _is_logged_in(page):
+            if await is_logged_in(page):
                 await set_last_login_ts(datetime.now(timezone.utc).isoformat())
                 break
             await page.wait_for_timeout(5000)
@@ -168,5 +178,10 @@ async def stop_monitor() -> str:
             pass
     _monitor_task = None
     return "stopped"
+
+
+async def get_browser_page() -> Page:
+    """Get the browser page for remote interaction"""
+    return await _ensure_browser()
 
 
