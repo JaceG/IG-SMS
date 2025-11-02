@@ -7,8 +7,7 @@ import random
 from datetime import datetime, timezone
 from typing import Optional
 
-from playwright.async_api import Browser, Page
-import undetected_playwright as up
+from playwright.async_api import async_playwright, Browser, Page
 
 from ig_monitor.config import get_settings
 from ig_monitor.state import (
@@ -42,15 +41,20 @@ async def _ensure_browser() -> Page:
         return _page
 
     user_data_dir, _ = _data_paths()
+    pw = await async_playwright().start()
     
     # Check if we should run headless (default True for Render, False for local with visible browser)
     # Set HEADLESS_BROWSER=false to see the browser locally
     headless = os.getenv("HEADLESS_BROWSER", "true").lower() != "false"
     
     try:
-        # Use undetected-playwright for better anti-detection
-        # It automatically handles stealth mode
-        _browser = await up.chromium.launch_persistent_context(
+        # Use a more recent, realistic user agent
+        user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        )
+        
+        _browser = await pw.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
             headless=headless,
             args=[
@@ -72,7 +76,7 @@ async def _ensure_browser() -> Page:
                 "--exclude-switches=enable-automation",
             ],
             viewport={"width": 1366, "height": 768},  # More common viewport size
-            # undetected-playwright automatically handles user agent and headers
+            user_agent=user_agent,
             # Add extra HTTP headers to look more legitimate
             extra_http_headers={
                 "Accept-Language": "en-US,en;q=0.9",
