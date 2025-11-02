@@ -7,7 +7,8 @@ import random
 from datetime import datetime, timezone
 from typing import Optional
 
-from playwright.async_api import async_playwright, Browser, Page
+from playwright.async_api import Browser, Page
+import undetected_playwright as up
 
 from ig_monitor.config import get_settings
 from ig_monitor.state import (
@@ -41,40 +42,78 @@ async def _ensure_browser() -> Page:
         return _page
 
     user_data_dir, _ = _data_paths()
-    pw = await async_playwright().start()
     
     # Check if we should run headless (default True for Render, False for local with visible browser)
     # Set HEADLESS_BROWSER=false to see the browser locally
     headless = os.getenv("HEADLESS_BROWSER", "true").lower() != "false"
     
     try:
-        _browser = await pw.chromium.launch_persistent_context(
-        user_data_dir=user_data_dir,
-        headless=headless,
-        args=[
-            "--disable-dev-shm-usage",
-            "--no-sandbox",
-            "--disable-gpu",
-            # Essential memory optimization flags (tested and safe)
-            "--disable-extensions",
-            "--disable-background-networking",
-            "--disable-background-timer-throttling",
-            "--disable-backgrounding-occluded-windows",
-            "--disable-component-extensions-with-background-pages",
-            "--disable-default-apps",
-            "--disable-sync",
-            "--disable-notifications",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--no-zygote",
-        ],
-        viewport={"width": 800, "height": 600},  # Smaller viewport saves memory
-        user_agent=(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-        ),
-    )
+        # Use undetected-playwright for better anti-detection
+        # It automatically handles stealth mode
+        _browser = await up.chromium.launch_persistent_context(
+            user_data_dir=user_data_dir,
+            headless=headless,
+            args=[
+                "--disable-dev-shm-usage",
+                "--no-sandbox",  # Required for Docker, but might be detected
+                "--disable-gpu",
+                # Keep only essential flags - remove ones that scream "automation"
+                "--disable-background-networking",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-component-extensions-with-background-pages",
+                "--disable-default-apps",
+                "--disable-notifications",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--no-zygote",
+                # Remove automation detection
+                "--disable-blink-features=AutomationControlled",
+                "--exclude-switches=enable-automation",
+            ],
+            viewport={"width": 1366, "height": 768},  # More common viewport size
+            # undetected-playwright automatically handles user agent and headers
+            # Add extra HTTP headers to look more legitimate
+            extra_http_headers={
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Cache-Control": "max-age=0",
+            },
+        )
         _page = await _browser.new_page()
+        
+        # Additional JavaScript to hide automation (stealth plugin handles most, but add extra)
+        await _page.add_init_script("""
+            // Remove webdriver property
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+            
+            // Override permissions
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                    Promise.resolve({ state: Notification.permission }) :
+                    originalQuery(parameters)
+            );
+            
+            // Mock plugins
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5]
+            });
+            
+            // Mock languages
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en']
+            });
+        """)
+        
         return _page
     except Exception as e:
         logger = logging.getLogger(__name__)
