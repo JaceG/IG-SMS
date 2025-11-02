@@ -439,8 +439,8 @@ async def browser_screenshot(token: str = Query(None)):
         except:
             pass  # Continue even if timeout - page might already be loaded
         
-        # Use smaller screenshot to save memory
-        screenshot_bytes = await page.screenshot(full_page=False, clip={"width": 800, "height": 600})
+        # Use smaller screenshot to save memory - clip requires x, y, width, height
+        screenshot_bytes = await page.screenshot(full_page=False, clip={"x": 0, "y": 0, "width": 800, "height": 600})
         return Response(content=screenshot_bytes, media_type="image/png")
     except Exception as e:
         logger.error(f"Screenshot error: {e}", exc_info=True)
