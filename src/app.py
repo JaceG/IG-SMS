@@ -143,6 +143,7 @@ async def browser_interface(token: str = Query(None)):
                 <li>The screenshot below shows what the browser sees</li>
                 <li>Click anywhere on the screenshot to interact with the page</li>
                 <li>Use "Type Text" to enter your username/password</li>
+                <li>Use scroll buttons or Arrow keys (↑↓) to scroll the page</li>
                 <li>Once logged in, you can start the monitor via SMS: "START IG"</li>
             </ol>
         </div>
@@ -172,6 +173,13 @@ async def browser_interface(token: str = Query(None)):
             <button onclick="typeText()">⌨️ Type Text</button>
             <button onclick="pressEnter()">⏎ Press Enter</button>
             <button onclick="pressTab()">⇥ Press Tab</button>
+        </div>
+        
+        <div class="controls">
+            <button onclick="scrollPage('up')" class="secondary">⬆️ Scroll Up</button>
+            <button onclick="scrollPage('down')" class="secondary">⬇️ Scroll Down</button>
+            <button onclick="scrollPage('pageUp')" class="secondary">⬆️⬆️ Page Up</button>
+            <button onclick="scrollPage('pageDown')" class="secondary">⬇️⬇️ Page Down</button>
         </div>
     </div>
     
@@ -399,6 +407,43 @@ async def browser_interface(token: str = Query(None)):
             }
         }
         
+        async function scrollPage(direction) {
+            updateStatus(`Scrolling ${direction}...`);
+            try {
+                const response = await fetch(`/browser/scroll?token=${token}&direction=${direction}`, {
+                    method: 'POST'
+                });
+                if (!response.ok) {
+                    const text = await response.text();
+                    updateStatus(`❌ Scroll failed: ${response.status} ${text}`, true);
+                    return;
+                }
+                const data = await response.json();
+                if (data.success) {
+                    updateStatus(`✅ Scrolled ${direction}`);
+                    setTimeout(getScreenshot, 300);
+                } else {
+                    updateStatus(`❌ Error: ${data.error || 'Failed to scroll'}`, true);
+                }
+            } catch (e) {
+                updateStatus(`❌ Error: ${e.message}`, true);
+            }
+        }
+        
+        // Add keyboard shortcuts for scrolling
+        document.addEventListener('keydown', (e) => {
+            // Check if not typing in an input field
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+                    e.preventDefault();
+                    scrollPage(e.key === 'ArrowUp' ? 'up' : 'pageUp');
+                } else if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+                    e.preventDefault();
+                    scrollPage(e.key === 'ArrowDown' ? 'down' : 'pageDown');
+                }
+            }
+        });
+        
         // Auto-refresh screenshot every 5 seconds
         setInterval(getScreenshot, 5000);
         
@@ -548,6 +593,40 @@ async def browser_key(key: str = Query(...), token: str = Query(None)):
         return JSONResponse({"success": True})
     except Exception as e:
         logger.error(f"Key press error: {e}", exc_info=True)
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/browser/scroll")
+async def browser_scroll(direction: str = Query(...), token: str = Query(None)):
+    """Scroll the page (up, down, pageUp, pageDown)"""
+    _check_token(token)
+    try:
+        page = await get_browser_page()
+        
+        # Get viewport height from JavaScript (more reliable)
+        viewport_height = await page.evaluate("window.innerHeight")
+        if not viewport_height or viewport_height == 0:
+            viewport_height = 600  # Fallback
+        
+        if direction == "up":
+            # Scroll up by 300 pixels
+            await page.evaluate("window.scrollBy(0, -300)")
+        elif direction == "down":
+            # Scroll down by 300 pixels
+            await page.evaluate("window.scrollBy(0, 300)")
+        elif direction == "pageUp":
+            # Scroll up by viewport height
+            await page.evaluate(f"window.scrollBy(0, -{viewport_height})")
+        elif direction == "pageDown":
+            # Scroll down by viewport height
+            await page.evaluate(f"window.scrollBy(0, {viewport_height})")
+        else:
+            return JSONResponse({"success": False, "error": f"Invalid direction: {direction}. Use 'up', 'down', 'pageUp', or 'pageDown'"}, status_code=400)
+        
+        await page.wait_for_timeout(200)  # Wait for scroll animation
+        return JSONResponse({"success": True, "direction": direction})
+    except Exception as e:
+        logger.error(f"Scroll error: {e}", exc_info=True)
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
