@@ -221,14 +221,47 @@ async def browser_interface(token: str = Query(None)):
         
         async function getScreenshot() {
             const img = document.getElementById('screenshot');
-            img.onerror = function() {
-                updateStatus('❌ Failed to load screenshot. Browser may not be initialized yet.', true);
-                img.style.display = 'none';
+            let retryCount = 0;
+            const maxRetries = 3;
+            
+            const loadImage = () => {
+                const timestamp = Date.now();
+                const imgSrc = `/browser/screenshot?token=${token}&t=${timestamp}`;
+                
+                img.onerror = function() {
+                    retryCount++;
+                    if (retryCount < maxRetries) {
+                        updateStatus(`⏳ Screenshot loading... (retry ${retryCount}/${maxRetries})`);
+                        setTimeout(() => loadImage(), 2000);
+                    } else {
+                        updateStatus('❌ Failed to load screenshot. Browser may not be initialized yet. Try clicking "Open Instagram Login" first.', true);
+                        img.style.display = 'none';
+                    }
+                };
+                
+                img.onload = function() {
+                    // Check if image is the 1x1 transparent PNG (error case)
+                    if (img.naturalWidth === 1 && img.naturalHeight === 1) {
+                        retryCount++;
+                        if (retryCount < maxRetries) {
+                            updateStatus(`⏳ Browser initializing... (retry ${retryCount}/${maxRetries})`);
+                            setTimeout(() => loadImage(), 2000);
+                        } else {
+                            updateStatus('❌ Browser not ready. Try clicking "Open Instagram Login" to initialize the browser.', true);
+                            img.style.display = 'none';
+                        }
+                    } else {
+                        updateStatus('✅ Screenshot loaded');
+                        img.style.display = 'block';
+                        retryCount = 0; // Reset on success
+                    }
+                };
+                
+                updateStatus('📸 Loading screenshot...');
+                img.src = imgSrc;
             };
-            img.onload = function() {
-                img.style.display = 'block';
-            };
-            img.src = `/browser/screenshot?token=${token}&t=${Date.now()}`;
+            
+            loadImage();
         }
         
         async function checkLoginStatus() {
@@ -393,12 +426,26 @@ async def browser_screenshot(token: str = Query(None)):
     _check_token(token)
     try:
         page = await get_browser_page()
+        
+        # If page is blank/about:blank, navigate to a default page first
+        current_url = page.url
+        if not current_url or current_url == "about:blank" or "about:" in current_url:
+            logger.info("Page is blank, navigating to Instagram...")
+            await page.goto("https://www.instagram.com", wait_until="domcontentloaded", timeout=10000)
+        
+        # Wait a bit for page to be ready
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=3000)
+        except:
+            pass  # Continue even if timeout - page might already be loaded
+        
         # Use smaller screenshot to save memory
         screenshot_bytes = await page.screenshot(full_page=False, clip={"width": 800, "height": 600})
         return Response(content=screenshot_bytes, media_type="image/png")
     except Exception as e:
         logger.error(f"Screenshot error: {e}", exc_info=True)
-        # Return a 1x1 transparent PNG on error
+        # Return a 1x1 transparent PNG on error, but log more details
+        logger.error(f"Screenshot failed - browser may not be ready. Error details: {type(e).__name__}: {e}")
         transparent_png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
         return Response(content=transparent_png, media_type="image/png", status_code=500)
 
