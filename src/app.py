@@ -421,42 +421,63 @@ async def browser_interface(token: str = Query(None)):
     """)
 
 
+# Lock to prevent concurrent navigations
+_navigation_lock = asyncio.Lock()
+
 @app.get("/browser/screenshot")
 async def browser_screenshot(token: str = Query(None)):
     """Get screenshot of current browser state"""
     _check_token(token)
     try:
-        # Add timeout for entire operation (30 seconds max)
+        # Add timeout for entire operation (20 seconds max - reduced from 30)
         async def _take_screenshot():
             page = await get_browser_page()
             
-            # If page is blank/about:blank, navigate to a default page first
-            try:
-                current_url = page.url
-                if not current_url or current_url == "about:blank" or "about:" in current_url:
-                    logger.info("Page is blank, navigating to Instagram...")
-                    await page.goto("https://www.instagram.com", wait_until="domcontentloaded", timeout=8000)
-            except Exception as nav_error:
-                logger.warning(f"Navigation warning: {nav_error}")
-                # Continue anyway - might already have a page
+            # Only navigate if page is truly blank, and use lock to prevent conflicts
+            # Skip navigation if it's likely to fail or conflict
+            current_url = page.url
+            if current_url and current_url not in ["about:blank", ""] and "about:" not in current_url:
+                # Page has content, just screenshot it
+                pass
+            else:
+                # Page is blank - try to navigate but don't block on it
+                # Use lock to prevent multiple simultaneous navigations
+                async with _navigation_lock:
+                    try:
+                        # Quick check if still blank (might have been navigated by another request)
+                        if page.url in ["about:blank", ""] or "about:" in page.url:
+                            logger.info("Page is blank, attempting navigation...")
+                            # Use shorter timeout and don't wait for full load
+                            await asyncio.wait_for(
+                                page.goto("https://www.instagram.com", wait_until="domcontentloaded", timeout=5000),
+                                timeout=6.0
+                            )
+                            # Give it a moment to render
+                            await asyncio.sleep(1)
+                    except (asyncio.TimeoutError, Exception) as nav_error:
+                        logger.warning(f"Navigation skipped or failed: {type(nav_error).__name__}: {nav_error}")
+                        # Continue to screenshot anyway - might be a blank/loading page
             
-            # Use smaller screenshot to save memory - clip requires x, y, width, height
-            # Add timeout to screenshot operation itself
-            screenshot_bytes = await asyncio.wait_for(
-                page.screenshot(full_page=False, clip={"x": 0, "y": 0, "width": 800, "height": 600}),
-                timeout=10.0
-            )
-            return Response(content=screenshot_bytes, media_type="image/png")
+            # Try to screenshot whatever is there - even if blank or loading
+            try:
+                screenshot_bytes = await asyncio.wait_for(
+                    page.screenshot(full_page=False, clip={"x": 0, "y": 0, "width": 800, "height": 600}),
+                    timeout=5.0  # Reduced timeout for screenshot itself
+                )
+                return Response(content=screenshot_bytes, media_type="image/png")
+            except Exception as screenshot_error:
+                logger.warning(f"Screenshot capture failed: {screenshot_error}, trying without clip...")
+                # Fallback: try screenshot without clip
+                screenshot_bytes = await page.screenshot(full_page=False, timeout=5000)
+                return Response(content=screenshot_bytes, media_type="image/png")
         
-        return await asyncio.wait_for(_take_screenshot(), timeout=30.0)
+        return await asyncio.wait_for(_take_screenshot(), timeout=20.0)
     except asyncio.TimeoutError:
-        logger.error("Screenshot operation timed out after 30 seconds")
+        logger.error("Screenshot operation timed out after 20 seconds")
         transparent_png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
         return Response(content=transparent_png, media_type="image/png", status_code=504)  # 504 Gateway Timeout
     except Exception as e:
         logger.error(f"Screenshot error: {e}", exc_info=True)
-        # Return a 1x1 transparent PNG on error, but log more details
-        logger.error(f"Screenshot failed - browser may not be ready. Error details: {type(e).__name__}: {e}")
         transparent_png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
         return Response(content=transparent_png, media_type="image/png", status_code=500)
 
