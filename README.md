@@ -1,23 +1,19 @@
 # IG-SMS
 
-Instagram DM monitor that sends SMS notifications via Twilio. Monitor a specific Instagram DM thread and receive text messages when new messages arrive.
+Instagram DM monitor that sends SMS notifications via AWS SNS. Monitor a specific Instagram DM thread and receive text messages when new messages arrive.
 
 ## Features
 
 - Monitor a specific Instagram DM thread via web scraping with Playwright
 - **Remote browser interface** - Log in to Instagram via web UI (accessible from anywhere)
-- Start/stop monitoring via SMS commands
+- Start/stop monitoring via web controls (planned) instead of SMS commands
 - Persistent login session (stay logged in 8-12 hours without re-authentication)
 - Deployable to Render with persistent storage
-- Twilio integration for SMS notifications
+- AWS SNS integration for outbound SMS notifications
 
-## SMS Commands
+## Notifications
 
-Send SMS to your configured Twilio number:
-
-- `START IG` - Start monitoring the configured DM thread
-- `STOP IG` - Stop monitoring (session remains logged in)
-- `STATUS IG` - Check if monitor is currently running
+The app sends outbound SMS notifications to your configured phone number (via AWS SNS) when new Instagram DMs are detected and for important status messages.
 
 ## Remote Browser Interface
 
@@ -51,7 +47,7 @@ IG-SMS/
 │   ├── app.py              # FastAPI application
 │   └── ig_monitor/         # Monitor module
 │       ├── config.py       # Configuration management
-│       ├── sms.py          # Twilio SMS integration
+│       ├── sms.py          # AWS SNS SMS integration
 │       ├── state.py        # State persistence (SQLite)
 │       └── monitor.py      # Playwright monitoring logic
 ├── Dockerfile              # Container configuration
@@ -78,9 +74,9 @@ playwright install chromium
 
 3. Set environment variables (create `.env` file):
 ```
-TWILIO_ACCOUNT_SID=your_account_sid
-TWILIO_AUTH_TOKEN=your_auth_token
-TWILIO_FROM_NUMBER=+1234567890
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_access_key_id
+AWS_SECRET_ACCESS_KEY=your_secret_access_key
 OWNER_PHONE=+1234567890
 IG_THREAD_URL=https://www.instagram.com/direct/t/THREAD_ID/
 POLL_SECONDS=90
@@ -102,11 +98,12 @@ uvicorn src.app:app --reload
 5. Set all required environment variables in Render dashboard
 6. Deploy
 
-### Twilio Configuration
+### AWS SNS Configuration (for SMS)
 
-1. Create a Twilio account and buy a phone number
-2. Set the Messaging webhook to: `https://your-render-app.onrender.com/twilio/sms`
-3. Configure environment variables with your Twilio credentials
+1. Create an AWS account if you don’t already have one.
+2. In IAM, create a user for this app with permission to publish to SNS (for example, `AmazonSNSFullAccess` to start).
+3. Generate an access key for that user and use it for `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
+4. Ensure SMS is enabled in SNS for your chosen region and that `OWNER_PHONE` is in E.164 format (e.g. `+1234567890`).
 
 ## How It Works
 
@@ -115,7 +112,7 @@ uvicorn src.app:app --reload
 3. The browser session is shared between the web interface and the monitor
 4. When monitoring is started, it navigates to your configured DM thread
 5. Polls the page every N seconds (configurable) to detect new messages
-6. When a new message is detected, it sends an SMS via Twilio
+6. When a new message is detected, it sends an SMS via AWS SNS to your configured phone number
 7. Session is preserved on disk so you can remain logged in without constant re-authentication
 
 ## Important Notes

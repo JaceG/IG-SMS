@@ -16,9 +16,9 @@ services:
       - key: DATA_DIR
         value: /data
       # The following should be set in the Render dashboard or via CLI, not committed:
-      # - key: TWILIO_ACCOUNT_SID
-      # - key: TWILIO_AUTH_TOKEN
-      # - key: TWILIO_FROM_NUMBER
+      # - key: AWS_REGION
+      # - key: AWS_ACCESS_KEY_ID
+      # - key: AWS_SECRET_ACCESS_KEY
       # - key: OWNER_PHONE
       # - key: IG_THREAD_URL
       # - key: POLL_SECONDS

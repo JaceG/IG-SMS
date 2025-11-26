@@ -4,12 +4,12 @@ from typing import Optional
 
 
 class Settings(BaseSettings):
-    # Twilio configuration
-    twilio_account_sid: str = Field(..., alias="TWILIO_ACCOUNT_SID")
-    twilio_auth_token: str = Field(..., alias="TWILIO_AUTH_TOKEN")
-    twilio_from_number: str = Field(..., alias="TWILIO_FROM_NUMBER")
+    # AWS / SNS configuration for outbound SMS
+    aws_region: str = Field(..., alias="AWS_REGION")
+    aws_access_key_id: str = Field(..., alias="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(..., alias="AWS_SECRET_ACCESS_KEY")
 
-    # Owner/command authority
+    # Phone number to notify (your phone)
     owner_phone: str = Field(..., alias="OWNER_PHONE")
 
     # Instagram thread to monitor
@@ -18,11 +18,8 @@ class Settings(BaseSettings):
     # Polling interval (seconds)
     poll_seconds: int = Field(90, alias="POLL_SECONDS")
 
-    # Optional app secret for admin endpoints
+    # Optional app secret for admin / browser endpoints
     app_secret_token: Optional[str] = Field(None, alias="APP_SECRET_TOKEN")
-    
-    # Enable Twilio signature validation (recommended for production, can disable for testing)
-    validate_twilio_signature: bool = Field(True, alias="VALIDATE_TWILIO_SIGNATURE")
 
     # Paths for persistent data (mounted volume on Render)
     data_dir: str = Field("/data", alias="DATA_DIR")
@@ -37,5 +34,4 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]
-
 

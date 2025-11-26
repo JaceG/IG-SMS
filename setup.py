@@ -15,7 +15,7 @@ setup(
     version="0.1.0",
     author="Jace Galloway",
     author_email="",
-    description="Instagram DM monitor that sends SMS notifications via Twilio",
+    description="Instagram DM monitor that sends SMS notifications via AWS SNS",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/JaceG/IG-SMS",
