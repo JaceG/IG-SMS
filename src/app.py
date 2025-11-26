@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request, Depends, HTTPException, Query, Form
 from fastapi.responses import JSONResponse, PlainTextResponse, HTMLResponse, Response
 from ig_monitor.config import get_settings
 from ig_monitor.sms import send_sms
-from ig_monitor.state import init_state
+from ig_monitor.state import init_state, get_last_seen_id, get_last_login_ts, is_running as state_is_running
 from ig_monitor.monitor import start_monitor, stop_monitor, is_monitor_running, get_browser_page
 
 # Configure logging to output to stdout (so Render captures it)
@@ -591,4 +591,245 @@ async def browser_thread(token: str = Query(None)):
         logger.error(f"Thread navigation error: {e}", exc_info=True)
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
+
+@app.get("/dashboard")
+async def dashboard(token: str = Query(None)):
+    """
+    Simple web dashboard to start/stop the monitor and view status.
+    Protected by the same APP_SECRET_TOKEN as the browser UI.
+    """
+    _check_token(token)
+
+    return HTMLResponse("""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IG-SMS Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); padding: 20px; }
+        h1 { margin-bottom: 16px; color: #333; }
+        .section { margin-bottom: 20px; }
+        .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+        button { padding: 10px 18px; border-radius: 4px; border: none; cursor: pointer; font-size: 14px; }
+        button.primary { background: #007bff; color: white; }
+        button.primary:hover { background: #0056b3; }
+        button.danger { background: #dc3545; color: white; }
+        button.danger:hover { background: #c82333; }
+        button.secondary { background: #6c757d; color: white; }
+        button.secondary:hover { background: #545b62; }
+        .status-box { background: #e9ecef; border-radius: 4px; padding: 12px; font-family: monospace; font-size: 13px; white-space: pre-wrap; }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 11px; margin-left: 8px; }
+        .badge.running { background: #d4edda; color: #155724; }
+        .badge.stopped { background: #f8d7da; color: #721c24; }
+        .hint { font-size: 12px; color: #666; margin-top: 4px; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>IG-SMS Dashboard <span id="runningBadge" class="badge stopped">stopped</span></h1>
+
+        <div class="section">
+            <div class="buttons">
+                <button class="primary" onclick="startMonitor()">▶ Start Monitor</button>
+                <button class="danger" onclick="stopMonitor()">⏸ Stop Monitor</button>
+                <button class="secondary" onclick="refreshStatus()">🔄 Refresh Status</button>
+                <button class="secondary" onclick="testSms()">📲 Send Test SMS</button>
+            </div>
+            <div class="hint">
+                Use <a href="#" onclick="openBrowser(); return false;">Remote Browser</a> to log into Instagram before starting the monitor.
+            </div>
+        </div>
+
+        <div class="section">
+            <h3 style="margin-bottom: 8px;">Current Status</h3>
+            <div id="statusBox" class="status-box">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        const token = new URLSearchParams(window.location.search).get('token') || '';
+
+        function setBadge(running) {
+            const badge = document.getElementById('runningBadge');
+            if (running) {
+                badge.textContent = 'running';
+                badge.classList.remove('stopped');
+                badge.classList.add('running');
+            } else {
+                badge.textContent = 'stopped';
+                badge.classList.remove('running');
+                badge.classList.add('stopped');
+            }
+        }
+
+        function setStatus(text) {
+            document.getElementById('statusBox').textContent = text;
+        }
+
+        async function callEndpoint(path, method) {
+            const url = `${path}?token=${encodeURIComponent(token)}`;
+            const opts = { method: method || 'GET' };
+            const resp = await fetch(url, opts);
+            const text = await resp.text();
+            let data = null;
+            try { data = JSON.parse(text); } catch (e) {}
+            return { ok: resp.ok, status: resp.status, rawText: text, data };
+        }
+
+        async function refreshStatus() {
+            setStatus('Loading status...');
+            try {
+                const r = await callEndpoint('/dashboard/status', 'GET');
+                if (!r.ok) {
+                    setStatus(`Error ${r.status}: ${r.rawText}`);
+                    setBadge(false);
+                    return;
+                }
+                const d = r.data || {};
+                setBadge(!!d.running);
+                const lines = [
+                    `running: ${d.running}`,
+                    `last_seen_id: ${d.last_seen_id || 'None'}`,
+                    `last_login_ts: ${d.last_login_ts || 'None'}`,
+                    `thread_url: ${d.thread_url || 'Unknown'}`,
+                ];
+                setStatus(lines.join('\\n'));
+            } catch (e) {
+                setStatus(`Error loading status: ${e.message}`);
+                setBadge(false);
+            }
+        }
+
+        async function startMonitor() {
+            setStatus('Starting monitor...');
+            try {
+                const r = await callEndpoint('/dashboard/start', 'POST');
+                if (!r.ok) {
+                    setStatus(`Start failed (${r.status}): ${r.rawText}`);
+                    return;
+                }
+                const d = r.data || {};
+                setStatus(d.message || 'Monitor started');
+                setBadge(true);
+            } catch (e) {
+                setStatus(`Start error: ${e.message}`);
+            }
+        }
+
+        async function stopMonitor() {
+            setStatus('Stopping monitor...');
+            try {
+                const r = await callEndpoint('/dashboard/stop', 'POST');
+                if (!r.ok) {
+                    setStatus(`Stop failed (${r.status}): ${r.rawText}`);
+                    return;
+                }
+                const d = r.data || {};
+                setStatus(d.message || 'Monitor stopped');
+                setBadge(false);
+            } catch (e) {
+                setStatus(`Stop error: ${e.message}`);
+            }
+        }
+
+        function openBrowser() {
+            const url = `/browser?token=${encodeURIComponent(token)}`;
+            window.open(url, '_blank');
+        }
+
+        async function testSms() {
+            setStatus('Sending test SMS via AWS SNS...');
+            try {
+                const r = await callEndpoint('/dashboard/test-sms', 'POST');
+                if (!r.ok) {
+                    setStatus(`Test SMS failed (${r.status}): ${r.rawText}`);
+                    return;
+                }
+                const d = r.data || {};
+                setStatus(d.message || 'Test SMS sent (check your phone).');
+            } catch (e) {
+                setStatus(`Test SMS error: ${e.message}`);
+            }
+        }
+
+        // Initial load
+        refreshStatus();
+    </script>
+</body>
+</html>
+    """)
+
+
+@app.get("/dashboard/status")
+async def dashboard_status(token: str = Query(None)):
+    """
+    Return JSON with monitor state and some basic metadata.
+    """
+    _check_token(token)
+    try:
+        running = is_monitor_running()
+        last_seen_id = await get_last_seen_id()
+        last_login_ts = await get_last_login_ts()
+        return JSONResponse(
+            {
+                "running": running,
+                "last_seen_id": last_seen_id,
+                "last_login_ts": last_login_ts,
+                "thread_url": settings.ig_thread_url,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Dashboard status error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/dashboard/start")
+async def dashboard_start(token: str = Query(None)):
+    """
+    Start the monitor from the web dashboard.
+    """
+    _check_token(token)
+    try:
+        status = await start_monitor()
+        return JSONResponse({"ok": True, "message": f"Monitor {status}"})
+    except Exception as e:
+        logger.error(f"Dashboard start error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/dashboard/stop")
+async def dashboard_stop(token: str = Query(None)):
+    """
+    Stop the monitor from the web dashboard.
+    """
+    _check_token(token)
+    try:
+        status = await stop_monitor()
+        return JSONResponse({"ok": True, "message": f"Monitor {status}"})
+    except Exception as e:
+        logger.error(f"Dashboard stop error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/dashboard/test-sms")
+async def dashboard_test_sms(token: str = Query(None)):
+    """
+    Send a test SMS to OWNER_PHONE using AWS SNS to verify configuration.
+    """
+    _check_token(token)
+    try:
+        if not settings.owner_phone:
+            raise HTTPException(status_code=400, detail="OWNER_PHONE is not configured")
+        send_sms(settings.owner_phone, "IG-SMS: test notification via AWS SNS dashboard.")
+        return JSONResponse({"ok": True, "message": f"Test SMS sent to {settings.owner_phone}"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Dashboard test SMS error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
